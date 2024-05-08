@@ -11,8 +11,6 @@ import (
 	"log"
 	"os"
 
-	"golang.org/x/image/vector"
-
 	"zappem.net/pub/graphics/raster"
 )
 
@@ -52,18 +50,18 @@ func main() {
 	pt2X, pt2Y := conv(1, 1)
 	pad2X, pad2Y := conv(4, 1)
 
-	r := vector.NewRasterizer(w, h)
+	r := raster.NewRasterizer(w, h)
 	raster.SquareAt(r, pad1X, pad1Y, d)
 	raster.LineTo(r, true, pad1X, pad1Y, pt1X, pt1Y, d/3)
 	raster.LineTo(r, true, pt1X, pt1Y, pt2X, pt2Y, d/3)
 	raster.LineTo(r, true, pt2X, pt2Y, pad2X, pad2Y, d/3)
 	raster.PointAt(r, pad2X, pad2Y, d)
-	raster.DrawAt(im, r, 0, 0, color.Black)
+	raster.DrawAt(im, r.R, 0, 0, color.Black)
 	r.Reset(w, h)
 
 	raster.PointAt(r, pad1X, pad1Y, d*0.6)
 	raster.PointAt(r, pad2X, pad2Y, d*0.6)
-	raster.DrawAt(im, r, 0, 0, color.White)
+	raster.DrawAt(im, r.R, 0, 0, color.White)
 
 	png.Encode(f, im)
 }
