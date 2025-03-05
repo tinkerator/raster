@@ -21,6 +21,14 @@ creates the following `image.png` file:
 
 ![trace rendered](image.png)
 
+The optional `--fast` argument pieces together the final image from
+smaller renderings. I've not done extensive comparisons, so the
+performance difference may not be significant. This method of
+rendering employs different approximations, so the renderings are not
+pixel for pixel the same.
+
+![trace rendered --fast](fast.png)
+
 ## License info
 
 The `raster` program is distributed with the same BSD 3-clause license

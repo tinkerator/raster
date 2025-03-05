@@ -3,6 +3,7 @@
 package raster
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
@@ -19,14 +20,50 @@ type Scriber interface {
 	ClosePath()
 }
 
+type Operator int
+
+const (
+	bogus Operator = iota
+	moveto
+	lineto
+	cubeto
+)
+
+func (op Operator) String() string {
+	switch op {
+	case moveto:
+		return "MoveTo"
+	case lineto:
+		return "LineTo"
+	case cubeto:
+		return "CubeTo"
+	default:
+		return "invalid"
+	}
+}
+
+// Segment is a single line.
+type Segment struct {
+	Op   Operator
+	Args []float64
+}
+
+// Entry captures the signature of a series of segments.
+type Entry struct {
+	Closed                 bool
+	Path                   []Segment
+	MinX, MaxX, MinY, MaxY float64
+}
+
 // Rasterizer is a wrapper for the
 // golang.org/x/image/vector.Rasterizer type which maps float64
 // arguments to float32 bit calls.
 type Rasterizer struct {
-	R *vector.Rasterizer
+	R       *vector.Rasterizer
+	Entries []Entry
 }
 
-// NewRasterizer allocates a new rasterizer.
+// NewRasterizer allocates a new rasterizer with a fixed size.
 func NewRasterizer(w, h int) *Rasterizer {
 	r := vector.NewRasterizer(w, h)
 	return &Rasterizer{R: r}
@@ -38,28 +75,76 @@ func (r *Rasterizer) Reset(w, h int) {
 	r.R.Reset(w, h)
 }
 
+func (r *Rasterizer) extend(op Operator, args ...float64) {
+	if r.R != nil {
+		return
+	}
+	n := len(r.Entries) - 1
+	i := 0
+	if n < 0 || r.Entries[n].Closed {
+		e := Entry{
+			MinX: args[0],
+			MinY: args[1],
+			MaxX: args[0],
+			MaxY: args[1],
+		}
+		r.Entries = append(r.Entries, e)
+		n++
+		i += 2
+	}
+	for ; i < len(args); i += 2 {
+		if a := args[i]; a < r.Entries[n].MinX {
+			r.Entries[n].MinX = a
+		} else if a > r.Entries[n].MaxX {
+			r.Entries[n].MaxX = a
+		}
+		if a := args[i+1]; a < r.Entries[n].MinY {
+			r.Entries[n].MinY = a
+		} else if a > r.Entries[n].MaxY {
+			r.Entries[n].MaxY = a
+		}
+	}
+	r.Entries[n].Path = append(r.Entries[n].Path, Segment{
+		Op:   op,
+		Args: args,
+	})
+}
+
 // MoveTo sets the rasterizer pen to the coordinate (x,y).
 func (r *Rasterizer) MoveTo(x, y float64) {
-	r.R.MoveTo(float32(x), float32(y))
+	r.extend(moveto, x, y)
+	if r.R != nil {
+		r.R.MoveTo(float32(x), float32(y))
+	}
 }
 
 // LineTo constructs a straight line from the pen to the target (x,y)
 // coordinate, and updates the pen to this location.
 func (r *Rasterizer) LineTo(x, y float64) {
-	r.R.LineTo(float32(x), float32(y))
+	r.extend(lineto, x, y)
+	if r.R != nil {
+		r.R.LineTo(float32(x), float32(y))
+	}
 }
 
 // CubeTo constructs a cubic Bezier curve using the supplied
 // parameters, from the pen location to point (e,f), which becomes the
 // updated pen location.
 func (r *Rasterizer) CubeTo(a, b, c, d, e, f float64) {
-	r.R.CubeTo(float32(a), float32(b), float32(c), float32(d), float32(e), float32(f))
+	r.extend(cubeto, a, b, c, d, e, f)
+	if r.R != nil {
+		r.R.CubeTo(float32(a), float32(b), float32(c), float32(d), float32(e), float32(f))
+	}
 }
 
 // ClosePath forms a loop back line from the pen to the start of the
 // path.
 func (r *Rasterizer) ClosePath() {
-	r.R.ClosePath()
+	if r.R != nil {
+		r.R.ClosePath()
+	} else {
+		r.Entries[len(r.Entries)-1].Closed = true
+	}
 }
 
 // The circular approximation, that uses this constant, with Bezier
@@ -134,4 +219,37 @@ func SquareAt(r Scriber, x, y, width float64) {
 // (0,0) coordinate of the image.
 func DrawAt(im draw.Image, r *vector.Rasterizer, x, y float64, col color.Color) {
 	r.Draw(im, im.Bounds(), image.NewUniform(col), image.Point{X: int(x), Y: int(y)})
+}
+
+// Render places the entries of r into the im at (x,y) offset.
+func (r *Rasterizer) Render(im draw.Image, x, y float64, col color.Color) {
+	for _, e := range r.Entries {
+		wide := int(1 + e.MaxX - e.MinX)
+		high := int(1 + e.MaxY - e.MinY)
+		vr := vector.NewRasterizer(wide, high)
+		if !e.Closed {
+			continue // empty shape
+		}
+		for _, p := range e.Path {
+			a := p.Args
+			if (p.Op == cubeto && len(a) != 6) || (p.Op != cubeto && len(a) != 2) {
+				panic(fmt.Sprint("invalid arg count ", len(a), " for ", p.Op))
+			}
+			switch p.Op {
+			case moveto:
+				vr.MoveTo(float32(a[0]-e.MinX), float32(a[1]-e.MinY))
+			case lineto:
+				vr.LineTo(float32(a[0]-e.MinX), float32(a[1]-e.MinY))
+			case cubeto:
+				vr.CubeTo(float32(a[0]-e.MinX), float32(a[1]-e.MinY),
+					float32(a[2]-e.MinX), float32(a[3]-e.MinY),
+					float32(a[4]-e.MinX), float32(a[5]-e.MinY))
+			default:
+				panic(fmt.Sprint("unsupported Op=", p.Op))
+			}
+		}
+		vr.ClosePath()
+		ix, iy := int(x+e.MinX), int(y+e.MinY)
+		vr.Draw(im, image.Rect(ix, iy, ix+wide, iy+high), image.NewUniform(col), image.ZP)
+	}
 }
