@@ -224,11 +224,17 @@ func DrawAt(im draw.Image, r *vector.Rasterizer, x, y float64, col color.Color) 
 // Render places the entries of r into the im at (x,y) offset.
 func (r *Rasterizer) Render(im draw.Image, x, y float64, col color.Color) {
 	for _, e := range r.Entries {
-		wide := int(1 + e.MaxX - e.MinX)
-		high := int(1 + e.MaxY - e.MinY)
+		wide := int(2 + e.MaxX - e.MinX)
+		high := int(2 + e.MaxY - e.MinY)
 		vr := vector.NewRasterizer(wide, high)
 		if !e.Closed {
 			continue // empty shape
+		}
+		toX := func(x float64) float32 {
+			return float32(1 + x - e.MinX)
+		}
+		toY := func(y float64) float32 {
+			return float32(1 + y - e.MinY)
 		}
 		for _, p := range e.Path {
 			a := p.Args
@@ -237,19 +243,17 @@ func (r *Rasterizer) Render(im draw.Image, x, y float64, col color.Color) {
 			}
 			switch p.Op {
 			case moveto:
-				vr.MoveTo(float32(a[0]-e.MinX), float32(a[1]-e.MinY))
+				vr.MoveTo(toX(a[0]), toY(a[1]))
 			case lineto:
-				vr.LineTo(float32(a[0]-e.MinX), float32(a[1]-e.MinY))
+				vr.LineTo(toX(a[0]), toY(a[1]))
 			case cubeto:
-				vr.CubeTo(float32(a[0]-e.MinX), float32(a[1]-e.MinY),
-					float32(a[2]-e.MinX), float32(a[3]-e.MinY),
-					float32(a[4]-e.MinX), float32(a[5]-e.MinY))
+				vr.CubeTo(toX(a[0]), toY(a[1]), toX(a[2]), toY(a[3]), toX(a[4]), toY(a[5]))
 			default:
 				panic(fmt.Sprint("unsupported Op=", p.Op))
 			}
 		}
 		vr.ClosePath()
-		ix, iy := int(x+e.MinX), int(y+e.MinY)
+		ix, iy := int(x+e.MinX-1), int(y+e.MinY-1)
 		vr.Draw(im, image.Rect(ix, iy, ix+wide, iy+high), image.NewUniform(col), image.ZP)
 	}
 }
