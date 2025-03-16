@@ -59,26 +59,21 @@ type Entry struct {
 // golang.org/x/image/vector.Rasterizer type which maps float64
 // arguments to float32 bit calls.
 type Rasterizer struct {
-	R       *vector.Rasterizer
 	Entries []Entry
 }
 
-// NewRasterizer allocates a new rasterizer with a fixed size.
-func NewRasterizer(w, h int) *Rasterizer {
-	r := vector.NewRasterizer(w, h)
-	return &Rasterizer{R: r}
+// NewRasterizer allocates a new rasterizer.
+func NewRasterizer() *Rasterizer {
+	return &Rasterizer{}
 }
 
-// Reset resets the memory of the rasterizer and sets the size of its
-// clipping rectangle.
-func (r *Rasterizer) Reset(w, h int) {
-	r.R.Reset(w, h)
+// Reset resets the memory of the rasterizer.
+func (r *Rasterizer) Reset() {
+	r.Entries = nil
 }
 
+// extend appends another operation to the Entries.
 func (r *Rasterizer) extend(op Operator, args ...float64) {
-	if r.R != nil {
-		return
-	}
 	n := len(r.Entries) - 1
 	i := 0
 	if n < 0 || r.Entries[n].Closed {
@@ -113,18 +108,12 @@ func (r *Rasterizer) extend(op Operator, args ...float64) {
 // MoveTo sets the rasterizer pen to the coordinate (x,y).
 func (r *Rasterizer) MoveTo(x, y float64) {
 	r.extend(moveto, x, y)
-	if r.R != nil {
-		r.R.MoveTo(float32(x), float32(y))
-	}
 }
 
 // LineTo constructs a straight line from the pen to the target (x,y)
 // coordinate, and updates the pen to this location.
 func (r *Rasterizer) LineTo(x, y float64) {
 	r.extend(lineto, x, y)
-	if r.R != nil {
-		r.R.LineTo(float32(x), float32(y))
-	}
 }
 
 // CubeTo constructs a cubic Bezier curve using the supplied
@@ -132,19 +121,12 @@ func (r *Rasterizer) LineTo(x, y float64) {
 // updated pen location.
 func (r *Rasterizer) CubeTo(a, b, c, d, e, f float64) {
 	r.extend(cubeto, a, b, c, d, e, f)
-	if r.R != nil {
-		r.R.CubeTo(float32(a), float32(b), float32(c), float32(d), float32(e), float32(f))
-	}
 }
 
 // ClosePath forms a loop back line from the pen to the start of the
 // path.
 func (r *Rasterizer) ClosePath() {
-	if r.R != nil {
-		r.R.ClosePath()
-	} else {
-		r.Entries[len(r.Entries)-1].Closed = true
-	}
+	r.Entries[len(r.Entries)-1].Closed = true
 }
 
 // The circular approximation, that uses this constant, with Bezier
@@ -213,12 +195,6 @@ func SquareAt(r Scriber, x, y, width float64) {
 	r.LineTo(x+d, y+d)
 	r.LineTo(x-d, y+d)
 	r.ClosePath()
-}
-
-// DrawAt places the r into an image aligning (x,y) of r with the
-// (0,0) coordinate of the image.
-func DrawAt(im draw.Image, r *vector.Rasterizer, x, y float64, col color.Color) {
-	r.Draw(im, im.Bounds(), image.NewUniform(col), image.Point{X: int(x), Y: int(y)})
 }
 
 // Render places the entries of r into the im at (x,y) offset.

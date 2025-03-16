@@ -18,7 +18,6 @@ var (
 	dest   = flag.String("dest", "", "destination png file")
 	width  = flag.Int("width", 200, "width of image")
 	height = flag.Int("height", 100, "height of image")
-	fast   = flag.Bool("fast", false, "render with smaller copies")
 )
 
 func main() {
@@ -51,30 +50,18 @@ func main() {
 	pt2X, pt2Y := conv(1, 1)
 	pad2X, pad2Y := conv(4, 1)
 
-	r := &raster.Rasterizer{}
-	if !*fast {
-		r = raster.NewRasterizer(w, h)
-	}
+	r := raster.NewRasterizer()
 	raster.SquareAt(r, pad1X, pad1Y, d)
 	raster.LineTo(r, true, pad1X, pad1Y, pt1X, pt1Y, d/3)
 	raster.LineTo(r, true, pt1X, pt1Y, pt2X, pt2Y, d/3)
 	raster.LineTo(r, true, pt2X, pt2Y, pad2X, pad2Y, d/3)
 	raster.PointAt(r, pad2X, pad2Y, d)
-	if *fast {
-		r.Render(im, 0, 0, color.Black)
-		r = &raster.Rasterizer{}
-	} else {
-		raster.DrawAt(im, r.R, 0, 0, color.Black)
-		r.Reset(w, h)
-	}
+	r.Render(im, 0, 0, color.Black)
+	r.Reset()
 
 	raster.PointAt(r, pad1X, pad1Y, d*0.6)
 	raster.PointAt(r, pad2X, pad2Y, d*0.6)
-	if *fast {
-		r.Render(im, 0, 0, color.White)
-	} else {
-		raster.DrawAt(im, r.R, 0, 0, color.White)
-	}
+	r.Render(im, 0, 0, color.White)
 
 	png.Encode(f, im)
 }
